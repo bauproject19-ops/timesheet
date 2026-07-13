@@ -34,7 +34,14 @@
   .obj-title-text{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer;}
   .obj-title-text.expanded{-webkit-line-clamp:unset; overflow:visible;}
   .obj-row2{flex:1 1 100%; display:flex; gap:8px; align-items:center;}
-  .obj-hours{width:92px; flex:0 0 92px; font-weight:700; text-align:center; padding:10px 6px;}
+  .hstep{display:flex; align-items:center; gap:4px; flex:0 0 auto; -webkit-tap-highlight-color:transparent;}
+  .hstep-btn{
+    width:34px; height:34px; border-radius:9px; border:1px solid var(--border); background:#fff;
+    font-size:18px; font-weight:700; color:var(--text); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; line-height:1; padding:0;
+  }
+  .hstep-btn:active{background:var(--bg); border-color:var(--accent);}
+  .hstep-val{min-width:66px; text-align:center; font-weight:700; font-size:13.5px;}
   .place-toggle{display:flex; gap:6px; flex:1;}
   .place-btn{
     flex:1; padding:11px 6px; border-radius:9px; font-size:13px; font-weight:700;
@@ -226,7 +233,11 @@ function render(){
           <button type="button" class="place-btn office ${row.place==='Офис'?'active':''}" data-idx="${idx}" data-kind="place-btn" data-val="Офис">Офис</button>
           <button type="button" class="place-btn trip ${row.place==='Командировка'?'active':''}" data-idx="${idx}" data-kind="place-btn" data-val="Командировка">Командировка</button>
         </div>
-        <input type="time" class="obj-hours" step="900" value="${decToHM(row.hours)}" data-idx="${idx}" data-kind="hours">
+        <div class="hstep">
+          <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="${idx}" data-dir="-0.5">−</button>
+          <span class="hstep-val">${fmtHours(row.hours)}</span>
+          <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="${idx}" data-dir="0.5">+</button>
+        </div>
         <button class="rm" data-idx="${idx}" data-kind="rm-obj" type="button">×</button>
       </div>
     `;
@@ -239,7 +250,11 @@ function render(){
     div.className = 'obj-row';
     div.innerHTML = `
       <div class="obj-title">Больничный</div>
-      <input type="time" class="obj-hours" step="900" value="${decToHM(entry.sick)}" data-kind="sick" style="margin-left:auto">
+      <div class="hstep" style="margin-left:auto">
+        <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="sick" data-dir="-0.5">−</button>
+        <span class="hstep-val">${fmtHours(entry.sick)}</span>
+        <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="sick" data-dir="0.5">+</button>
+      </div>
       <button class="rm" data-kind="rm-sick" type="button">×</button>
     `;
     objRows.appendChild(div);
@@ -251,7 +266,11 @@ function render(){
     div.className = 'obj-row';
     div.innerHTML = `
       <div class="obj-title">Отгул</div>
-      <input type="time" class="obj-hours" step="900" value="${decToHM(entry.dayoff)}" data-kind="dayoff" style="margin-left:auto">
+      <div class="hstep" style="margin-left:auto">
+        <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="dayoff" data-dir="-0.5">−</button>
+        <span class="hstep-val">${fmtHours(entry.dayoff)}</span>
+        <button type="button" class="hstep-btn" data-kind="hstep-btn" data-target="dayoff" data-dir="0.5">+</button>
+      </div>
       <button class="rm" data-kind="rm-dayoff" type="button">×</button>
     `;
     objRows.appendChild(div);
@@ -281,11 +300,19 @@ function render(){
 }
 
 function attachRowHandlers(){
-  objRows.querySelectorAll('[data-kind=hours]').forEach(el=>{
-    el.addEventListener('input', e=>{
-      if(!e.target.value) return; // крутилка ещё не установила значение
-      const idx = +e.target.dataset.idx;
-      getEntry(dateInput.value).objects[idx].hours = hmToDec(e.target.value);
+  objRows.querySelectorAll('[data-kind=hstep-btn]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      const target = e.currentTarget.dataset.target;
+      const dir = parseFloat(e.currentTarget.dataset.dir);
+      const entry = getEntry(dateInput.value);
+      if(target === 'sick'){
+        entry.sick = Math.max(0, +(((parseFloat(entry.sick)||0) + dir).toFixed(2)));
+      } else if(target === 'dayoff'){
+        entry.dayoff = Math.max(0, +(((parseFloat(entry.dayoff)||0) + dir).toFixed(2)));
+      } else {
+        const idx = parseInt(target, 10);
+        entry.objects[idx].hours = Math.max(0, +(((parseFloat(entry.objects[idx].hours)||0) + dir).toFixed(2)));
+      }
       render();
     });
   });
@@ -300,20 +327,6 @@ function attachRowHandlers(){
     el.addEventListener('click', e=>{
       const idx = +e.target.dataset.idx;
       getEntry(dateInput.value).objects.splice(idx,1);
-      render();
-    });
-  });
-  objRows.querySelectorAll('[data-kind=sick]').forEach(el=>{
-    el.addEventListener('input', e=>{
-      if(!e.target.value) return;
-      getEntry(dateInput.value).sick = hmToDec(e.target.value);
-      render();
-    });
-  });
-  objRows.querySelectorAll('[data-kind=dayoff]').forEach(el=>{
-    el.addEventListener('input', e=>{
-      if(!e.target.value) return;
-      getEntry(dateInput.value).dayoff = hmToDec(e.target.value);
       render();
     });
   });
