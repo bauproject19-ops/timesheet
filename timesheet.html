@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Учёт рабочего времени</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --accent:#2fc7c9; --accent-dark:#1a9fa1;
+    --text:#1c2331; --muted:#7b8394; --red:#e5484d; --green:#1fa15b; --border:#e3e6ea;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--bg); color:var(--text); padding:24px;
+  }
+  .wrap{max-width:640px; margin:0 auto;}
+  h1{font-size:20px; margin:0 0 4px;}
+  .sub{color:var(--muted); font-size:13px; margin-bottom:20px;}
+  .card{background:var(--card); border-radius:14px; padding:18px 18px 20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.06);}
+  label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px; font-weight:600;}
+  input[type=date], input[type=text], input[type=number], select{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:9px;
+    font-size:14px; background:#fff; color:var(--text);
+  }
+  input:focus, select:focus{outline:2px solid var(--accent); border-color:var(--accent);}
+  .row-flex{display:flex; gap:10px; align-items:flex-end;}
+  .norm-banner{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:8px 4px;}
+  .norm-banner b{font-size:15px;}
+  .obj-row{display:flex; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);}
+  .obj-row:last-child{border-bottom:none;}
+  .obj-title{flex:1; font-size:13.5px; line-height:1.3;}
+  .obj-title .num{color:var(--muted); font-size:12px;}
+  .obj-title-text{display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer;}
+  .obj-title-text.expanded{-webkit-line-clamp:unset; overflow:visible;}
+  .obj-hours{width:68px;}
+  .obj-place{width:120px;}
+  .rm{background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px; padding:2px 6px;}
+  .rm:hover{color:var(--red);}
+  .search-wrap{position:relative;}
+  .dropdown{position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--border);
+    border-radius:9px; margin-top:4px; max-height:220px; overflow:auto; z-index:10; box-shadow:0 6px 20px rgba(0,0,0,.12);}
+  .dd-item{padding:9px 12px; font-size:13px; cursor:pointer; border-bottom:1px solid var(--border);}
+  .dd-item:last-child{border-bottom:none;}
+  .dd-item:hover{background:var(--bg);}
+  .dd-empty{padding:9px 12px; font-size:13px; color:var(--muted);}
+  .quickbtns{display:flex; gap:10px; margin-top:6px;}
+  .qbtn{flex:1; padding:10px; border-radius:9px; border:1px dashed var(--border); background:#fff;
+    cursor:pointer; font-size:13px; color:var(--text); text-align:center;}
+  .qbtn:hover{border-color:var(--accent); color:var(--accent-dark);}
+  .add-obj-btn{margin-top:10px; padding:10px; border-radius:9px; border:1px dashed var(--border);
+    background:#fff; cursor:pointer; font-size:13px; width:100%; color:var(--accent-dark); font-weight:600;}
+  .add-obj-btn:hover{border-color:var(--accent);}
+  .submit-btn{width:100%; padding:14px; border:none; border-radius:11px; background:var(--accent);
+    color:#fff; font-size:15px; font-weight:700; cursor:pointer; margin-top:6px;}
+  .submit-btn:disabled{background:#c9cdd4; cursor:not-allowed;}
+  .warn{color:var(--red); font-size:13px; font-weight:600; margin-top:8px; display:none;}
+  .warn.show{display:block;}
+  .ok{color:var(--green); font-size:13px; font-weight:600; margin-top:8px; display:none;}
+  .ok.show{display:block;}
+  .daytag{font-size:12px; padding:3px 9px; border-radius:20px; font-weight:600;}
+  .daytag.work{background:#eef2f5; color:var(--muted);}
+  .daytag.off{background:#fff2e0; color:#b5690b;}
+  .empty-hint{color:var(--muted); font-size:13px; padding:10px 0;}
+  .status{margin-top:14px; font-size:13px; line-height:1.5;}
+  .status .item{padding:4px 0;}
+  .footer-note{color:var(--muted); font-size:11.5px; margin-top:18px; line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Учёт рабочего времени</h1>
+  <div class="sub">Гохаев Денис — тестовая форма</div>
+
+  <div class="card">
+    <label>Дата</label>
+    <div class="row-flex">
+      <div style="flex:1"><input type="date" id="dateInput"></div>
+      <div id="dayTag" class="daytag work">рабочий день</div>
+    </div>
+    <div class="norm-banner">
+      <span>Норма на этот день: <b id="normVal">8ч</b></span>
+      <span>Введено: <b id="sumVal">0ч</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <label style="margin-bottom:10px;">Объекты</label>
+    <div id="objRows"></div>
+    <div class="empty-hint" id="emptyHint">Пока нет добавленных объектов на этот день.</div>
+
+    <div class="search-wrap">
+      <button class="add-obj-btn" id="addObjBtn" type="button">+ Добавить объект</button>
+      <input type="text" id="objSearch" placeholder="Начните вводить номер сделки, например 84.2..." style="display:none; margin-top:8px;">
+      <div id="ddResults" class="dropdown" style="display:none;"></div>
+    </div>
+
+    <div class="quickbtns">
+      <button class="qbtn" id="sickBtn" type="button">+ Больничный</button>
+      <button class="qbtn" id="dayoffBtn" type="button">+ Отгул</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <button class="submit-btn" id="submitBtn">Отправить</button>
+    <div class="warn" id="warnMsg"></div>
+    <div class="ok" id="okMsg"></div>
+    <div class="status" id="statusBox"></div>
+  </div>
+
+  <div class="footer-note">
+    Тестовая версия. Данные пишутся напрямую в Битрикс24 (смарт-процесс «Учёт времени»).
+    Список ранее выбранных объектов сохраняется в этом браузере и предлагается на следующий день.
+  </div>
+</div>
+
+<script>
+const WEBHOOK = 'https://bau-project.bitrix24.ru/rest/5/rhnurx3nl8ibxrya/';
+const ENTITY_TYPE_ID = 1068;
+const CATEGORY_ID = 1; // "Проектирование и обследование объектов"
+const ASSIGNED_BY_ID = 5;
+const EMPLOYEE_NAME = 'Гохаев Денис';
+const DEFAULT_NORM = 8;
+
+// Нерабочие праздничные и перенесённые дни РФ на 2026 год
+// (Постановление Правительства РФ от 24.09.2025 N 1466)
+const HOLIDAYS_2026 = [
+  '2025-12-31', // перенос с 4 января
+  '2026-01-01','2026-01-02','2026-01-03','2026-01-04','2026-01-05','2026-01-06','2026-01-07','2026-01-08',
+  '2026-01-09', // перенос с 3 января
+  '2026-02-23','2026-03-08','2026-05-01','2026-05-09','2026-06-12','2026-11-04'
+];
+
+let persistentObjects = JSON.parse(localStorage.getItem('timesheet_objects') || '[]');
+let dayEntries = {}; // dateStr -> { objects: [{id,title,hours,place}], sick: hours|null, dayoff: hours|null }
+
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function isWeekendOrHoliday(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const dow = d.getDay(); // 0 = вс, 6 = сб
+  return dow === 0 || dow === 6 || HOLIDAYS_2026.includes(dateStr);
+}
+
+function getEntry(dateStr){
+  if(!dayEntries[dateStr]) dayEntries[dateStr] = { objects: [], sick: null, dayoff: null };
+  return dayEntries[dateStr];
+}
+
+const dateInput = document.getElementById('dateInput');
+const dayTag = document.getElementById('dayTag');
+const normVal = document.getElementById('normVal');
+const sumVal = document.getElementById('sumVal');
+const objRows = document.getElementById('objRows');
+const emptyHint = document.getElementById('emptyHint');
+const addObjBtn = document.getElementById('addObjBtn');
+const objSearch = document.getElementById('objSearch');
+const ddResults = document.getElementById('ddResults');
+const sickBtn = document.getElementById('sickBtn');
+const dayoffBtn = document.getElementById('dayoffBtn');
+const submitBtn = document.getElementById('submitBtn');
+const warnMsg = document.getElementById('warnMsg');
+const okMsg = document.getElementById('okMsg');
+const statusBox = document.getElementById('statusBox');
+
+dateInput.value = todayStr();
+
+function render(){
+  const dateStr = dateInput.value;
+  const entry = getEntry(dateStr);
+  const weekend = isWeekendOrHoliday(dateStr);
+
+  dayTag.textContent = weekend ? 'выходной / праздник' : 'рабочий день';
+  dayTag.className = 'daytag ' + (weekend ? 'off' : 'work');
+  const norm = weekend ? 0 : DEFAULT_NORM;
+  normVal.textContent = norm + 'ч';
+
+  objRows.innerHTML = '';
+  let hasRows = false;
+
+  entry.objects.forEach((row, idx) => {
+    hasRows = true;
+    const div = document.createElement('div');
+    div.className = 'obj-row';
+    div.innerHTML = `
+      <div class="obj-title"><span class="obj-title-text" data-idx="${idx}" data-kind="toggle-title">${row.title}</span><br><span class="num">сделка №${row.dealId}</span></div>
+      <select class="obj-place" data-idx="${idx}" data-kind="place">
+        <option value="Офис" ${row.place==='Офис'?'selected':''}>Офис</option>
+        <option value="Командировка" ${row.place==='Командировка'?'selected':''}>Командировка</option>
+      </select>
+      <input type="number" class="obj-hours" min="0" step="0.5" value="${row.hours}" data-idx="${idx}" data-kind="hours">
+      <button class="rm" data-idx="${idx}" data-kind="rm-obj" type="button">×</button>
+    `;
+    objRows.appendChild(div);
+  });
+
+  if(entry.sick !== null){
+    hasRows = true;
+    const div = document.createElement('div');
+    div.className = 'obj-row';
+    div.innerHTML = `
+      <div class="obj-title">Больничный</div>
+      <input type="number" class="obj-hours" min="0" step="0.5" value="${entry.sick}" data-kind="sick" style="margin-left:auto">
+      <button class="rm" data-kind="rm-sick" type="button">×</button>
+    `;
+    objRows.appendChild(div);
+  }
+
+  if(entry.dayoff !== null){
+    hasRows = true;
+    const div = document.createElement('div');
+    div.className = 'obj-row';
+    div.innerHTML = `
+      <div class="obj-title">Отгул</div>
+      <input type="number" class="obj-hours" min="0" step="0.5" value="${entry.dayoff}" data-kind="dayoff" style="margin-left:auto">
+      <button class="rm" data-kind="rm-dayoff" type="button">×</button>
+    `;
+    objRows.appendChild(div);
+  }
+
+  emptyHint.style.display = hasRows ? 'none' : 'block';
+
+  const sum = entry.objects.reduce((s,r)=>s+(parseFloat(r.hours)||0),0)
+    + (parseFloat(entry.sick)||0) + (parseFloat(entry.dayoff)||0);
+  sumVal.textContent = sum + 'ч';
+
+  const enough = sum >= norm;
+  submitBtn.disabled = !enough || sum === 0;
+  if(sum === 0){
+    warnMsg.textContent = '';
+    warnMsg.classList.remove('show');
+  } else if(!enough){
+    warnMsg.textContent = `Недостаточно часов: введено ${sum}ч из ${norm}ч нормы.`;
+    warnMsg.classList.add('show');
+  } else {
+    warnMsg.textContent = '';
+    warnMsg.classList.remove('show');
+  }
+
+  attachRowHandlers();
+}
+
+function attachRowHandlers(){
+  objRows.querySelectorAll('[data-kind=hours]').forEach(el=>{
+    el.addEventListener('input', e=>{
+      const idx = +e.target.dataset.idx;
+      getEntry(dateInput.value).objects[idx].hours = e.target.value;
+      render();
+    });
+  });
+  objRows.querySelectorAll('[data-kind=place]').forEach(el=>{
+    el.addEventListener('change', e=>{
+      const idx = +e.target.dataset.idx;
+      getEntry(dateInput.value).objects[idx].place = e.target.value;
+    });
+  });
+  objRows.querySelectorAll('[data-kind=rm-obj]').forEach(el=>{
+    el.addEventListener('click', e=>{
+      const idx = +e.target.dataset.idx;
+      getEntry(dateInput.value).objects.splice(idx,1);
+      render();
+    });
+  });
+  objRows.querySelectorAll('[data-kind=sick]').forEach(el=>{
+    el.addEventListener('input', e=>{ getEntry(dateInput.value).sick = e.target.value; render(); });
+  });
+  objRows.querySelectorAll('[data-kind=dayoff]').forEach(el=>{
+    el.addEventListener('input', e=>{ getEntry(dateInput.value).dayoff = e.target.value; render(); });
+  });
+  const rmSick = objRows.querySelector('[data-kind=rm-sick]');
+  if(rmSick) rmSick.addEventListener('click', ()=>{ getEntry(dateInput.value).sick = null; render(); });
+  const rmDayoff = objRows.querySelector('[data-kind=rm-dayoff]');
+  if(rmDayoff) rmDayoff.addEventListener('click', ()=>{ getEntry(dateInput.value).dayoff = null; render(); });
+  objRows.querySelectorAll('[data-kind=toggle-title]').forEach(el=>{
+    el.addEventListener('click', e=>{ e.target.classList.toggle('expanded'); });
+  });
+}
+
+dateInput.addEventListener('change', ()=>{ okMsg.classList.remove('show'); statusBox.innerHTML=''; render(); });
+
+sickBtn.addEventListener('click', ()=>{
+  const entry = getEntry(dateInput.value);
+  if(entry.sick === null) entry.sick = 8;
+  render();
+});
+dayoffBtn.addEventListener('click', ()=>{
+  const entry = getEntry(dateInput.value);
+  if(entry.dayoff === null) entry.dayoff = 2;
+  render();
+});
+
+addObjBtn.addEventListener('click', ()=>{
+  objSearch.style.display = 'block';
+  objSearch.value = '';
+  objSearch.focus();
+  renderPersistentDropdown();
+});
+
+function renderPersistentDropdown(){
+  if(persistentObjects.length === 0){
+    ddResults.style.display = 'none';
+    return;
+  }
+  ddResults.innerHTML = '';
+  persistentObjects.forEach(obj=>{
+    const div = document.createElement('div');
+    div.className = 'dd-item';
+    div.textContent = obj.title + '  (№' + obj.dealId + ')';
+    div.addEventListener('click', ()=> selectObject(obj));
+    ddResults.appendChild(div);
+  });
+  ddResults.style.display = 'block';
+}
+
+let searchTimer = null;
+objSearch.addEventListener('input', ()=>{
+  clearTimeout(searchTimer);
+  const q = objSearch.value.trim();
+  if(q.length === 0){ renderPersistentDropdown(); return; }
+  searchTimer = setTimeout(()=> searchDeals(q), 300);
+});
+
+async function searchDeals(q){
+  ddResults.innerHTML = '<div class="dd-empty">Поиск...</div>';
+  ddResults.style.display = 'block';
+  try{
+    const res = await fetch(WEBHOOK + 'crm.deal.list', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        filter: { CATEGORY_ID: CATEGORY_ID, '%TITLE': q },
+        select: ['ID','TITLE'],
+        order: { ID: 'DESC' },
+        start: 0
+      })
+    });
+    const data = await res.json();
+    const deals = (data.result || []).slice(0, 15);
+    ddResults.innerHTML = '';
+    if(deals.length === 0){
+      ddResults.innerHTML = '<div class="dd-empty">Ничего не найдено</div>';
+      return;
+    }
+    deals.forEach(d=>{
+      const div = document.createElement('div');
+      div.className = 'dd-item';
+      div.textContent = d.TITLE + '  (№' + d.ID + ')';
+      div.addEventListener('click', ()=> selectObject({dealId:d.ID, title:d.TITLE}));
+      ddResults.appendChild(div);
+    });
+  }catch(e){
+    ddResults.innerHTML = '<div class="dd-empty">Ошибка поиска: ' + e.message + '</div>';
+  }
+}
+
+function selectObject(obj){
+  if(!persistentObjects.find(o=>o.dealId===obj.dealId)){
+    persistentObjects.push(obj);
+    localStorage.setItem('timesheet_objects', JSON.stringify(persistentObjects));
+  }
+  const entry = getEntry(dateInput.value);
+  if(!entry.objects.find(o=>o.dealId===obj.dealId)){
+    entry.objects.push({ dealId: obj.dealId, title: obj.title, hours: 0, place: 'Офис' });
+  }
+  objSearch.style.display = 'none';
+  ddResults.style.display = 'none';
+  render();
+}
+
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.search-wrap')){
+    ddResults.style.display = 'none';
+  }
+});
+
+submitBtn.addEventListener('click', async ()=>{
+  const dateStr = dateInput.value;
+  const entry = getEntry(dateStr);
+  const weekend = isWeekendOrHoliday(dateStr);
+  const norm = weekend ? 0 : DEFAULT_NORM;
+  const sumCheck = entry.objects.reduce((s,r)=>s+(parseFloat(r.hours)||0),0)
+    + (parseFloat(entry.sick)||0) + (parseFloat(entry.dayoff)||0);
+  if(sumCheck < norm){
+    warnMsg.textContent = `Недостаточно часов: введено ${sumCheck}ч из ${norm}ч нормы. Отправка невозможна.`;
+    warnMsg.classList.add('show');
+    return;
+  }
+  if(sumCheck === 0){
+    warnMsg.textContent = 'Нечего отправлять — добавь часы.';
+    warnMsg.classList.add('show');
+    return;
+  }
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Отправка...';
+  statusBox.innerHTML = '';
+  okMsg.classList.remove('show');
+
+  const toCreate = [];
+  entry.objects.forEach(row=>{
+    const h = parseFloat(row.hours) || 0;
+    if(h <= 0) return;
+    let title = `${EMPLOYEE_NAME} | ${row.title} (сделка ${row.dealId}) | ${row.place} | ${h}ч`;
+    if(weekend) title += ' | работа в выходной/праздничный';
+    toCreate.push({ title, dealId: row.dealId, kind: 'Объект: ' + row.title });
+  });
+  if(entry.sick !== null && parseFloat(entry.sick) > 0){
+    toCreate.push({ title: `${EMPLOYEE_NAME} | Больничный | ${entry.sick}ч`, kind: 'Больничный' });
+  }
+  if(entry.dayoff !== null && parseFloat(entry.dayoff) > 0){
+    toCreate.push({ title: `${EMPLOYEE_NAME} | Отгул | ${entry.dayoff}ч`, kind: 'Отгул' });
+  }
+
+  let okCount = 0, errCount = 0;
+  for(const item of toCreate){
+    try{
+      const res = await fetch(WEBHOOK + 'crm.item.add', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          entityTypeId: ENTITY_TYPE_ID,
+          fields: { title: item.title, begindate: dateStr, assignedById: ASSIGNED_BY_ID }
+        })
+      });
+      const data = await res.json();
+      if(data.result){
+        okCount++;
+        statusBox.innerHTML += `<div class="item">✓ ${item.kind} — записано (id ${data.result.item ? data.result.item.id : data.result})</div>`;
+      } else {
+        errCount++;
+        statusBox.innerHTML += `<div class="item" style="color:var(--red)">✗ ${item.kind} — ошибка: ${JSON.stringify(data.error_description || data)}</div>`;
+      }
+    }catch(e){
+      errCount++;
+      statusBox.innerHTML += `<div class="item" style="color:var(--red)">✗ ${item.kind} — ошибка сети: ${e.message}</div>`;
+    }
+  }
+
+  submitBtn.textContent = 'Отправить';
+  submitBtn.disabled = false;
+  if(errCount === 0 && okCount > 0){
+    okMsg.textContent = `Готово — записано ${okCount} запис${okCount===1?'ь':'и'}.`;
+    okMsg.classList.add('show');
+  }
+});
+
+render();
+</script>
+</body>
+</html>
