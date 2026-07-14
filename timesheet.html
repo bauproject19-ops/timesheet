@@ -601,6 +601,11 @@ vacLink.addEventListener('click', () => {
   }
 });
 
+function ruDate(iso){
+  const [y,m,d] = iso.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 vacConfirm.addEventListener('click', async () => {
   vacStatus.style.color = '';
   if (!ASSIGNED_BY_ID) {
@@ -614,36 +619,37 @@ vacConfirm.addEventListener('click', async () => {
     vacStatus.textContent = 'Проверь даты — "по" не может быть раньше "с".';
     return;
   }
-  const dates = [];
-  let d = new Date(from + 'T00:00:00');
-  const endD = new Date(to + 'T00:00:00');
-  while (d <= endD) {
-    dates.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
-    d.setDate(d.getDate() + 1);
-  }
   vacConfirm.disabled = true;
   vacConfirm.textContent = 'Оформляю...';
   vacStatus.textContent = '';
-  let ok = 0, err = 0;
-  for (const dStr of dates) {
-    try {
-      const res = await fetch(WEBHOOK + 'crm.item.add', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entityTypeId: ENTITY_TYPE_ID,
-          fields: { title: `${EMPLOYEE_NAME} | Отпуск | ${dStr}`, begindate: dStr, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: 0, [OBJECT_FIELD]: 'Отпуск' }
-        })
-      });
-      const data = await res.json();
-      if (data.result) ok++; else err++;
-    } catch (e) { err++; }
+  // Важно: поле begindate в этом смарт-процессе Битрикс всегда принудительно
+  // ставит текущую дату при записи (баг/автоматизация платформы, не лечится
+  // через API) — поэтому диапазон отпуска храним прямо в title, одной записью.
+  const rangeTag = `${ruDate(from)}–${ruDate(to)}`;
+  try {
+    const res = await fetch(WEBHOOK + 'crm.item.add', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entityTypeId: ENTITY_TYPE_ID,
+        fields: { title: `${EMPLOYEE_NAME} | Отпуск | ${rangeTag}`, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: 0, [OBJECT_FIELD]: 'Отпуск' }
+      })
+    });
+    const data = await res.json();
+    vacConfirm.disabled = false;
+    vacConfirm.textContent = 'Оформить';
+    if (data.result) {
+      vacStatus.style.color = 'var(--green)';
+      vacStatus.textContent = `Отпуск оформлен: ${ruDate(from)} — ${ruDate(to)}.`;
+    } else {
+      vacStatus.style.color = 'var(--red)';
+      vacStatus.textContent = 'Ошибка: ' + JSON.stringify(data.error_description || data);
+    }
+  } catch (e) {
+    vacConfirm.disabled = false;
+    vacConfirm.textContent = 'Оформить';
+    vacStatus.style.color = 'var(--red)';
+    vacStatus.textContent = 'Ошибка сети: ' + e.message;
   }
-  vacConfirm.disabled = false;
-  vacConfirm.textContent = 'Оформить';
-  vacStatus.style.color = err === 0 ? 'var(--green)' : 'var(--red)';
-  vacStatus.textContent = err === 0
-    ? `Отпуск оформлен: ${dates.length} дн. (${from} — ${to}).`
-    : `Готово частично: ${ok} из ${dates.length}, ${err} с ошибкой.`;
 });
 
 render();
