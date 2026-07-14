@@ -567,7 +567,11 @@ submitBtn.addEventListener('click', async ()=>{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           entityTypeId: ENTITY_TYPE_ID,
-          fields: { title: item.title, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours, [OBJECT_FIELD]: item.object, [PLACE_FIELD]: PLACE_ENUM[item.place] || null }
+          fields: { title: item.title, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours, [OBJECT_FIELD]: item.object, [PLACE_FIELD]: PLACE_ENUM[item.place] || null },
+          // Отключаем нативное системное уведомление Битрикса "Вы назначены
+          // ответственным" — иначе сотруднику на каждую внесённую запись
+          // прилетает отдельный спам вместо одного нашего напоминания.
+          params: { REGISTER_SONET_EVENT: 'N' }
         })
       });
       const data = await res.json();
@@ -639,7 +643,8 @@ vacConfirm.addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         entityTypeId: ENTITY_TYPE_ID,
-        fields: { title: `${EMPLOYEE_NAME} | Отпуск | ${rangeTag}`, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: 0, [OBJECT_FIELD]: 'Отпуск' }
+        fields: { title: `${EMPLOYEE_NAME} | Отпуск | ${rangeTag}`, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: 0, [OBJECT_FIELD]: 'Отпуск' },
+        params: { REGISTER_SONET_EVENT: 'N' }
       })
     });
     const data = await res.json();
