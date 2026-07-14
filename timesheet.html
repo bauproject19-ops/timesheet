@@ -85,7 +85,14 @@
 <body>
 <div class="wrap">
   <h1>Учёт рабочего времени</h1>
-  <div class="sub">Гохаев Денис — тестовая форма</div>
+  <div class="sub" id="subLine">Выбери себя в списке ниже</div>
+
+  <div class="card" id="empCard">
+    <label>Сотрудник</label>
+    <select id="empSelect">
+      <option value="">— выбрать —</option>
+    </select>
+  </div>
 
   <div class="card">
     <label>Дата</label>
@@ -133,8 +140,17 @@
 const WEBHOOK = 'https://bau-project.bitrix24.ru/rest/5/rhnurx3nl8ibxrya/';
 const ENTITY_TYPE_ID = 1068;
 const CATEGORY_ID = 1; // "Проектирование и обследование объектов"
-const ASSIGNED_BY_ID = 5;
-const EMPLOYEE_NAME = 'Гохаев Денис';
+const EMPLOYEES = [
+  { id: 5,   name: 'Гохаев Денис' },
+  { id: 681, name: 'Костерева Ольга' },
+  { id: 951, name: 'Архангельский Егор' },
+  { id: 257, name: 'Гайворонский Илья' },
+  { id: 787, name: 'Калинин Дмитрий' },
+  { id: 249, name: 'Пак Александр' },
+  { id: 399, name: 'Сидоров Петр' }
+];
+let ASSIGNED_BY_ID = null;
+let EMPLOYEE_NAME = null;
 const DEFAULT_NORM = 8;
 const HOURS_FIELD = 'ufCrm37Hours'; // числовое поле "Часы" в смарт-процессе, для отчётов/BI
 const OBJECT_FIELD = 'ufCrm37Object'; // текстовое поле "Объект", для группировки в списке Битрикса
@@ -192,6 +208,50 @@ function fmtHours(dec){
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return m === 0 ? `${h}ч` : `${h}ч ${m}м`;
+}
+
+const empSelect = document.getElementById('empSelect');
+const subLine = document.getElementById('subLine');
+const formCards = Array.from(document.querySelectorAll('.card')).filter(c => c.id !== 'empCard');
+
+EMPLOYEES.forEach(emp => {
+  const opt = document.createElement('option');
+  opt.value = emp.id;
+  opt.textContent = emp.name;
+  empSelect.appendChild(opt);
+});
+
+function lockForm(locked){
+  formCards.forEach(c => {
+    c.style.opacity = locked ? '0.4' : '1';
+    c.style.pointerEvents = locked ? 'none' : 'auto';
+  });
+}
+
+function setEmployee(id){
+  const emp = EMPLOYEES.find(e => String(e.id) === String(id));
+  if(!emp){
+    ASSIGNED_BY_ID = null;
+    EMPLOYEE_NAME = null;
+    subLine.textContent = 'Выбери себя в списке ниже';
+    lockForm(true);
+    return;
+  }
+  ASSIGNED_BY_ID = emp.id;
+  EMPLOYEE_NAME = emp.name;
+  subLine.textContent = emp.name;
+  localStorage.setItem('timesheet_employee_id', String(emp.id));
+  lockForm(false);
+}
+
+empSelect.addEventListener('change', () => setEmployee(empSelect.value));
+
+const savedEmpId = localStorage.getItem('timesheet_employee_id');
+if(savedEmpId && EMPLOYEES.find(e => String(e.id) === savedEmpId)){
+  empSelect.value = savedEmpId;
+  setEmployee(savedEmpId);
+} else {
+  lockForm(true);
 }
 
 const dateInput = document.getElementById('dateInput');
@@ -439,6 +499,11 @@ document.addEventListener('click', (e)=>{
 });
 
 submitBtn.addEventListener('click', async ()=>{
+  if(!ASSIGNED_BY_ID){
+    warnMsg.textContent = 'Сначала выбери себя в списке "Сотрудник" наверху.';
+    warnMsg.classList.add('show');
+    return;
+  }
   const dateStr = dateInput.value;
   const entry = getEntry(dateStr);
   const weekend = isWeekendOrHoliday(dateStr);
