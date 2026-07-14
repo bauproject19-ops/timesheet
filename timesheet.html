@@ -537,19 +537,27 @@ submitBtn.addEventListener('click', async ()=>{
   statusBox.innerHTML = '';
   okMsg.classList.remove('show');
 
+  // ВАЖНО: поле begindate в Битриксе принудительно перезаписывается текущей
+  // датой при любом crm.item.add/update (баг/ограничение платформы, не лечится).
+  // Поэтому фактическую дату записи (в том числе задним/передним числом)
+  // кладём в начало title в формате ДД.ММ.ГГГГ — это единственный надёжный
+  // способ хранить произвольную дату. Все отчёты и напоминалки читают дату
+  // именно оттуда, не из begindate.
+  const recordDateTag = ruDate(dateStr);
+
   const toCreate = [];
   entry.objects.forEach(row=>{
     const h = parseFloat(row.hours) || 0;
     if(h <= 0) return;
-    let title = `${EMPLOYEE_NAME} | ${row.title} (сделка ${row.dealId}) | ${row.place} | ${fmtHours(h)}`;
+    let title = `${recordDateTag} | ${EMPLOYEE_NAME} | ${row.title} (сделка ${row.dealId}) | ${row.place} | ${fmtHours(h)}`;
     if(weekend) title += ' | работа в выходной/праздничный';
     toCreate.push({ title, dealId: row.dealId, kind: 'Объект: ' + row.title, hours: h, object: row.title, place: row.place });
   });
   if(entry.sick !== null && parseFloat(entry.sick) > 0){
-    toCreate.push({ title: `${EMPLOYEE_NAME} | Больничный | ${fmtHours(entry.sick)}`, kind: 'Больничный', hours: parseFloat(entry.sick), object: 'Больничный', place: 'Больничный' });
+    toCreate.push({ title: `${recordDateTag} | ${EMPLOYEE_NAME} | Больничный | ${fmtHours(entry.sick)}`, kind: 'Больничный', hours: parseFloat(entry.sick), object: 'Больничный', place: 'Больничный' });
   }
   if(entry.dayoff !== null && parseFloat(entry.dayoff) > 0){
-    toCreate.push({ title: `${EMPLOYEE_NAME} | Отгул | ${fmtHours(entry.dayoff)}`, kind: 'Отгул', hours: parseFloat(entry.dayoff), object: 'Отгул', place: 'Отгул' });
+    toCreate.push({ title: `${recordDateTag} | ${EMPLOYEE_NAME} | Отгул | ${fmtHours(entry.dayoff)}`, kind: 'Отгул', hours: parseFloat(entry.dayoff), object: 'Отгул', place: 'Отгул' });
   }
 
   let okCount = 0, errCount = 0;
@@ -559,7 +567,7 @@ submitBtn.addEventListener('click', async ()=>{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           entityTypeId: ENTITY_TYPE_ID,
-          fields: { title: item.title, begindate: dateStr, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours, [OBJECT_FIELD]: item.object, [PLACE_FIELD]: PLACE_ENUM[item.place] || null }
+          fields: { title: item.title, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours, [OBJECT_FIELD]: item.object, [PLACE_FIELD]: PLACE_ENUM[item.place] || null }
         })
       });
       const data = await res.json();
