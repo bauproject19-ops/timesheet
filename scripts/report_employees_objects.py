@@ -1,14 +1,16 @@
-"""Ежедневный (19:00 МСК) отчёт: лист «По сотрудникам» (объекты, часы
-сегодня/за месяц) и лист «По объектам» (часы всего, кто работал). Собирается
-как .xlsx, заливается на Bitrix24 Диск, в чат уходит ссылка на файл."""
+"""Ежедневный (19:00 МСК) отчёт: лист «По сотрудникам» — грид-таблица
+(сотрудник × объект за сегодня, плюс итоги за сегодня/месяц/всё время) и лист
+«По объектам» (часы всего, кто работал). Собирается как .xlsx, заливается на
+Bitrix24 Диск, в чат уходит ссылка на файл."""
 from datetime import datetime, timedelta, timezone
 
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 from bitrix_common import (
-    USER_NAMES, fmt_num, get_all_items, record_date, send_message,
-    upload_to_disk,
+    TRIP_ENUM_ID, USER_NAMES, fmt_num, get_all_items, record_date,
+    send_message, upload_to_disk, vacationing_users_on,
 )
 
 THIN = Side(style="thin", color="B0B0B0")
@@ -23,88 +25,146 @@ def main():
     today = now_msk.date()
     today_str = today.strftime("%d.%m.%Y")
 
-    items = [it for it in get_all_items() if it.get("ufCrm37Object") != "Отпуск"]
+    all_items = get_all_items()
+    vac_today = vacationing_users_on(today, all_items)
+
+    # Рабочие записи (без отпуска) — для часов и итогов.
+    items = [it for it in all_items if it.get("ufCrm37Object") != "Отпуск"]
     for it in items:
         it["_date"] = record_date(it.get("title", ""))
 
     wb = openpyxl.Workbook()
 
-    # --- Лист 1: По сотрудникам ---
+    # === Лист 1: По сотрудникам (грид) ===
     ws1 = wb.active
     ws1.title = "По сотрудникам"
-    ws1.cell(row=1, column=1, value=f"Отчёт по сотрудникам — {today_str}").font = Font(bold=True, size=13)
-    headers1 = ["Сотрудник", "Объект", "Часы сегодня", "Часы за месяц"]
-    for col, h in enumerate(headers1, 1):
-        c = ws1.cell(row=2, column=col, value=h)
-        c.font = BOLD
-        c.fill = HEADER_FILL
-        c.border = BORDER
-        c.alignment = Alignment(horizontal="center", vertical="center")
 
-    by_emp: dict = {}
+    # Матрица "сегодня": сотрудник -> объект -> {hours, trip}
+    today_items = [
+        it for it in items
+        if it["_date"] == today
+        and float(it.get("ufCrm37Hours") or 0) > 0
+        and it.get("ufCrm37Object")
+    ]
+    matrix: dict = {}
+    obj_set: set = set()
+    for it in today_items:
+        emp = it["assignedById"]
+        obj = it["ufCrm37Object"]
+        obj_set.add(obj)
+        cell = matrix.setdefault(emp, {}).setdefault(obj, {"hours": 0.0, "trip": False})
+        cell["hours"] += float(it["ufCrm37Hours"])
+        if str(it.get("ufCrm37Place")) == str(TRIP_ENUM_ID):
+            cell["trip"] = True
+
+    special_order = ["Больничный", "Отгул"]
+
+    def obj_key(o):
+        return (special_order.index(o) if o in special_order else 99, o)
+
+    objects = sorted(obj_set, key=obj_key)
+
+    # Итоги по сотруднику: сегодня / за месяц / за всё время (по всей истории).
+    totals_today: dict = {}
+    totals_month: dict = {}
+    totals_all: dict = {}
+    emp_set: set = set()
     for it in items:
-        by_emp.setdefault(it["assignedById"], []).append(it)
+        d = it["_date"]
+        if not d:
+            continue
+        emp = it["assignedById"]
+        emp_set.add(emp)
+        h = float(it.get("ufCrm37Hours") or 0)
+        totals_all[emp] = totals_all.get(emp, 0.0) + h
+        if d.year == today.year and d.month == today.month:
+            totals_month[emp] = totals_month.get(emp, 0.0) + h
+        if d == today:
+            totals_today[emp] = totals_today.get(emp, 0.0) + h
 
-    row = 3
-    grand_today = 0.0
-    grand_month = 0.0
-    for emp in sorted(by_emp, key=lambda e: USER_NAMES.get(e, str(e))):
-        recs = by_emp[emp]
-        name = USER_NAMES.get(emp, f"ID{emp}")
-        by_obj_today: dict = {}
-        month_total = 0.0
-        today_total = 0.0
-        for it in recs:
-            d = it["_date"]
-            if not d:
-                continue
-            h = float(it.get("ufCrm37Hours") or 0)
-            if d == today:
-                obj = it.get("ufCrm37Object") or "—"
-                by_obj_today[obj] = by_obj_today.get(obj, 0.0) + h
-                today_total += h
-            if d.year == today.year and d.month == today.month:
-                month_total += h
+    emp_set |= vac_today
+    emps = sorted(emp_set, key=lambda e: USER_NAMES.get(e, str(e)))
 
-        if by_obj_today:
-            for obj, h in by_obj_today.items():
-                ws1.cell(row=row, column=1, value=name)
-                ws1.cell(row=row, column=2, value=obj)
-                ws1.cell(row=row, column=3, value=fmt_num(h))
-                ws1.cell(row=row, column=4, value="")
-                row += 1
-        else:
-            ws1.cell(row=row, column=1, value=name)
-            ws1.cell(row=row, column=2, value="нет записей за сегодня")
-            ws1.cell(row=row, column=3, value=0)
-            ws1.cell(row=row, column=4, value="")
+    headers1 = ["№", "ФИО сотрудника"] + objects + ["Всего сегодня", "Всего за месяц", "Всего за всё время"]
+
+    if not emps:
+        ws1.cell(row=1, column=1, value="Записей пока нет.").font = BOLD
+    else:
+        ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers1))
+        ws1.cell(row=1, column=1, value=f"Отчёт по сотрудникам — {today_str}").font = Font(bold=True, size=13)
+
+        for col, h in enumerate(headers1, 1):
+            c = ws1.cell(row=2, column=col, value=h)
+            c.font = BOLD
+            c.fill = HEADER_FILL
+            c.border = BORDER
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        col_totals = {o: 0.0 for o in objects}
+        grand_today = 0.0
+        grand_month = 0.0
+        grand_all = 0.0
+        row = 3
+        for i, emp in enumerate(emps, 1):
+            name = USER_NAMES.get(emp, f"ID{emp}")
+            ws1.cell(row=row, column=1, value=i)
+            ws1.cell(row=row, column=2, value=name)
+
+            on_vacation_now = emp in vac_today and emp not in matrix
+            if on_vacation_now:
+                for ci in range(len(objects)):
+                    ws1.cell(row=row, column=3 + ci, value="")
+                ws1.cell(row=row, column=3 + len(objects), value="Отпуск")
+            else:
+                for ci, o in enumerate(objects):
+                    cell = matrix.get(emp, {}).get(o)
+                    if cell:
+                        val = fmt_num(cell["hours"]) + (" (к)" if cell["trip"] else "")
+                        col_totals[o] += cell["hours"]
+                        ws1.cell(row=row, column=3 + ci, value=val)
+                    else:
+                        ws1.cell(row=row, column=3 + ci, value="")
+                ws1.cell(row=row, column=3 + len(objects), value=fmt_num(totals_today.get(emp, 0.0)))
+
+            month_h = totals_month.get(emp, 0.0)
+            all_h = totals_all.get(emp, 0.0)
+            ws1.cell(row=row, column=4 + len(objects), value=fmt_num(month_h))
+            ws1.cell(row=row, column=5 + len(objects), value=fmt_num(all_h))
+
+            grand_today += totals_today.get(emp, 0.0)
+            grand_month += month_h
+            grand_all += all_h
+
+            for col in range(1, len(headers1) + 1):
+                c = ws1.cell(row=row, column=col)
+                c.border = BORDER
+                c.alignment = Alignment(horizontal="center", vertical="center")
+            ws1.cell(row=row, column=2).alignment = Alignment(horizontal="left", vertical="center")
             row += 1
 
-        ws1.cell(row=row, column=1, value=f"Всего — {name}")
-        ws1.cell(row=row, column=2, value="")
-        ws1.cell(row=row, column=3, value=fmt_num(today_total))
-        ws1.cell(row=row, column=4, value=fmt_num(month_total))
-        for col in range(1, 5):
-            ws1.cell(row=row, column=col).font = BOLD
-            ws1.cell(row=row, column=col).fill = TOTAL_FILL
-        row += 1
-        grand_today += today_total
-        grand_month += month_total
+        ws1.cell(row=row, column=2, value="Всего на объект / ИТОГО")
+        for ci, o in enumerate(objects):
+            ws1.cell(row=row, column=3 + ci, value=fmt_num(col_totals[o]))
+        ws1.cell(row=row, column=3 + len(objects), value=fmt_num(grand_today))
+        ws1.cell(row=row, column=4 + len(objects), value=fmt_num(grand_month))
+        ws1.cell(row=row, column=5 + len(objects), value=fmt_num(grand_all))
+        for col in range(1, len(headers1) + 1):
+            c = ws1.cell(row=row, column=col)
+            c.border = BORDER
+            c.font = BOLD
+            c.fill = TOTAL_FILL
+            c.alignment = Alignment(horizontal="center", vertical="center")
+        ws1.cell(row=row, column=2).alignment = Alignment(horizontal="left", vertical="center")
 
-    ws1.cell(row=row, column=1, value="ИТОГО").font = BOLD
-    ws1.cell(row=row, column=3, value=fmt_num(grand_today)).font = BOLD
-    ws1.cell(row=row, column=4, value=fmt_num(grand_month)).font = BOLD
+        ws1.column_dimensions["A"].width = 5
+        ws1.column_dimensions["B"].width = 24
+        for i in range(len(objects)):
+            ws1.column_dimensions[get_column_letter(3 + i)].width = 16
+        ws1.column_dimensions[get_column_letter(3 + len(objects))].width = 13
+        ws1.column_dimensions[get_column_letter(4 + len(objects))].width = 13
+        ws1.column_dimensions[get_column_letter(5 + len(objects))].width = 16
 
-    for r in range(2, row + 1):
-        for col in range(1, 5):
-            ws1.cell(row=r, column=col).border = BORDER
-
-    ws1.column_dimensions["A"].width = 24
-    ws1.column_dimensions["B"].width = 28
-    ws1.column_dimensions["C"].width = 14
-    ws1.column_dimensions["D"].width = 14
-
-    # --- Лист 2: По объектам ---
+    # === Лист 2: По объектам (без изменений) ===
     ws2 = wb.create_sheet("По объектам")
     ws2.cell(row=1, column=1, value=f"Отчёт по объектам — всего (на {today_str})").font = Font(bold=True, size=13)
     headers2 = ["Объект", "Часы всего", "Сотрудники"]
