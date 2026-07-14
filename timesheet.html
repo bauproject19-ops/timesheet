@@ -133,6 +133,17 @@
   <div class="footer-note">
     Тестовая версия. Данные пишутся напрямую в Битрикс24 (смарт-процесс «Учёт времени»).
     Список ранее выбранных объектов сохраняется в этом браузере и предлагается на следующий день.
+    <div style="margin-top:10px;">
+      <a href="javascript:void(0)" id="vacLink" style="color:var(--muted); text-decoration:underline; font-size:11px;">Оформить отпуск</a>
+    </div>
+    <div id="vacBox" style="display:none; margin-top:8px;">
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:11px;">
+        <span>с</span><input type="date" id="vacFrom" style="font-size:11px; padding:4px 6px; width:auto;">
+        <span>по</span><input type="date" id="vacTo" style="font-size:11px; padding:4px 6px; width:auto;">
+        <button type="button" id="vacConfirm" style="font-size:11px; padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:#fff; cursor:pointer;">Оформить</button>
+      </div>
+      <div id="vacStatus" style="margin-top:6px; font-size:11px;"></div>
+    </div>
   </div>
 </div>
 
@@ -571,6 +582,68 @@ submitBtn.addEventListener('click', async ()=>{
     okMsg.textContent = `Готово — записано ${okCount} запис${okCount===1?'ь':'и'}.`;
     okMsg.classList.add('show');
   }
+});
+
+const vacLink = document.getElementById('vacLink');
+const vacBox = document.getElementById('vacBox');
+const vacFrom = document.getElementById('vacFrom');
+const vacTo = document.getElementById('vacTo');
+const vacConfirm = document.getElementById('vacConfirm');
+const vacStatus = document.getElementById('vacStatus');
+
+vacLink.addEventListener('click', () => {
+  const show = vacBox.style.display === 'none';
+  vacBox.style.display = show ? 'block' : 'none';
+  if (show) {
+    vacFrom.value = todayStr();
+    vacTo.value = todayStr();
+    vacStatus.textContent = '';
+  }
+});
+
+vacConfirm.addEventListener('click', async () => {
+  vacStatus.style.color = '';
+  if (!ASSIGNED_BY_ID) {
+    vacStatus.style.color = 'var(--red)';
+    vacStatus.textContent = 'Сначала выбери себя в списке "Сотрудник" наверху.';
+    return;
+  }
+  const from = vacFrom.value, to = vacTo.value;
+  if (!from || !to || to < from) {
+    vacStatus.style.color = 'var(--red)';
+    vacStatus.textContent = 'Проверь даты — "по" не может быть раньше "с".';
+    return;
+  }
+  const dates = [];
+  let d = new Date(from + 'T00:00:00');
+  const endD = new Date(to + 'T00:00:00');
+  while (d <= endD) {
+    dates.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+    d.setDate(d.getDate() + 1);
+  }
+  vacConfirm.disabled = true;
+  vacConfirm.textContent = 'Оформляю...';
+  vacStatus.textContent = '';
+  let ok = 0, err = 0;
+  for (const dStr of dates) {
+    try {
+      const res = await fetch(WEBHOOK + 'crm.item.add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entityTypeId: ENTITY_TYPE_ID,
+          fields: { title: `${EMPLOYEE_NAME} | Отпуск | ${dStr}`, begindate: dStr, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: 0, [OBJECT_FIELD]: 'Отпуск' }
+        })
+      });
+      const data = await res.json();
+      if (data.result) ok++; else err++;
+    } catch (e) { err++; }
+  }
+  vacConfirm.disabled = false;
+  vacConfirm.textContent = 'Оформить';
+  vacStatus.style.color = err === 0 ? 'var(--green)' : 'var(--red)';
+  vacStatus.textContent = err === 0
+    ? `Отпуск оформлен: ${dates.length} дн. (${from} — ${to}).`
+    : `Готово частично: ${ok} из ${dates.length}, ${err} с ошибкой.`;
 });
 
 render();
