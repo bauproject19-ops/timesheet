@@ -137,6 +137,9 @@ const ASSIGNED_BY_ID = 5;
 const EMPLOYEE_NAME = 'Гохаев Денис';
 const DEFAULT_NORM = 8;
 const HOURS_FIELD = 'ufCrm37Hours'; // числовое поле "Часы" в смарт-процессе, для отчётов/BI
+const OBJECT_FIELD = 'ufCrm37Object'; // текстовое поле "Объект", для группировки в списке Битрикса
+const PLACE_FIELD = 'ufCrm37Place'; // поле-справочник "Форма работы"
+const PLACE_ENUM = { 'Офис': 1525, 'Командировка': 1527, 'Больничный': 1529, 'Отгул': 1531 };
 
 // Нерабочие праздничные и перенесённые дни РФ на 2026 год
 // (Постановление Правительства РФ от 24.09.2025 N 1466)
@@ -464,13 +467,13 @@ submitBtn.addEventListener('click', async ()=>{
     if(h <= 0) return;
     let title = `${EMPLOYEE_NAME} | ${row.title} (сделка ${row.dealId}) | ${row.place} | ${fmtHours(h)}`;
     if(weekend) title += ' | работа в выходной/праздничный';
-    toCreate.push({ title, dealId: row.dealId, kind: 'Объект: ' + row.title, hours: h });
+    toCreate.push({ title, dealId: row.dealId, kind: 'Объект: ' + row.title, hours: h, object: row.title, place: row.place });
   });
   if(entry.sick !== null && parseFloat(entry.sick) > 0){
-    toCreate.push({ title: `${EMPLOYEE_NAME} | Больничный | ${fmtHours(entry.sick)}`, kind: 'Больничный', hours: parseFloat(entry.sick) });
+    toCreate.push({ title: `${EMPLOYEE_NAME} | Больничный | ${fmtHours(entry.sick)}`, kind: 'Больничный', hours: parseFloat(entry.sick), object: 'Больничный', place: 'Больничный' });
   }
   if(entry.dayoff !== null && parseFloat(entry.dayoff) > 0){
-    toCreate.push({ title: `${EMPLOYEE_NAME} | Отгул | ${fmtHours(entry.dayoff)}`, kind: 'Отгул', hours: parseFloat(entry.dayoff) });
+    toCreate.push({ title: `${EMPLOYEE_NAME} | Отгул | ${fmtHours(entry.dayoff)}`, kind: 'Отгул', hours: parseFloat(entry.dayoff), object: 'Отгул', place: 'Отгул' });
   }
 
   let okCount = 0, errCount = 0;
@@ -480,7 +483,7 @@ submitBtn.addEventListener('click', async ()=>{
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           entityTypeId: ENTITY_TYPE_ID,
-          fields: { title: item.title, begindate: dateStr, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours }
+          fields: { title: item.title, begindate: dateStr, assignedById: ASSIGNED_BY_ID, [HOURS_FIELD]: item.hours, [OBJECT_FIELD]: item.object, [PLACE_FIELD]: PLACE_ENUM[item.place] || null }
         })
       });
       const data = await res.json();
