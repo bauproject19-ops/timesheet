@@ -3,7 +3,7 @@ name: Timesheet report - employees and objects
 on:
   schedule:
     # Смещено с круглой минуты — см. комментарий в timesheet-reminder.yml.
-    - cron: '6 16 * * *'  # ~19:06 МСК (UTC+3)
+    - cron: '40 17 * * *'  # 20:40 МСК (UTC+3)
   workflow_dispatch: {}
 
 jobs:
