@@ -116,6 +116,16 @@ def _encode_url_path(url: str) -> str:
 
 
 def upload_to_disk(filename: str, content_bytes: bytes) -> str:
+    # Если в папке уже лежит файл с таким же именем (например, отчёт за
+    # сегодня уже гоняли вручную ранее) — удаляем старый перед загрузкой.
+    # Без этого disk.folder.uploadfile иногда (не всегда — платформа ведёт
+    # себя непоследовательно) падает с 400 Bad Request на повторе того же
+    # имени в тот же день. Удаление старого делает перезапуск идемпотентным.
+    existing = call("disk.folder.getchildren", {"id": REPORTS_FOLDER_ID})
+    for item in existing:
+        if item.get("NAME") == filename and item.get("TYPE") == "file":
+            call("disk.file.delete", {"id": item["ID"]})
+
     b64 = base64.b64encode(content_bytes).decode()
     res = call("disk.folder.uploadfile", {
         "id": REPORTS_FOLDER_ID,
