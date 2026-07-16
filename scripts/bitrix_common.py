@@ -3,6 +3,7 @@ import re
 import base64
 import requests
 from datetime import date
+from urllib.parse import urlsplit, urlunsplit, quote
 
 WEBHOOK = os.environ["BITRIX_WEBHOOK"]  # напр. https://bau-project.bitrix24.ru/rest/5/xxxxxxxx/
 ENTITY_TYPE_ID = 1068
@@ -103,6 +104,17 @@ def vacationing_users_on(target: date, items):
     return result
 
 
+def _encode_url_path(url: str) -> str:
+    """DETAIL_URL от Bitrix содержит непроэкранированные пробелы и кириллицу
+    в пути (папка называется "Отчеты Учет времени") — мессенджер Bitrix
+    обрывает автолинк на первом же пробеле, и в чате ссылка ведёт на
+    несуществующий обрезанный путь (404). Кодируем путь целиком, оставляя
+    только "/" как safe-символ, чтобы ссылка стала одним словом без пробелов."""
+    parts = urlsplit(url)
+    encoded_path = quote(parts.path, safe='/')
+    return urlunsplit((parts.scheme, parts.netloc, encoded_path, parts.query, parts.fragment))
+
+
 def upload_to_disk(filename: str, content_bytes: bytes) -> str:
     b64 = base64.b64encode(content_bytes).decode()
     res = call("disk.folder.uploadfile", {
@@ -110,7 +122,7 @@ def upload_to_disk(filename: str, content_bytes: bytes) -> str:
         "data": {"NAME": filename},
         "fileContent": [filename, b64],
     })
-    return res["DETAIL_URL"]
+    return _encode_url_path(res["DETAIL_URL"])
 
 
 def send_message(dialog_id: str, message: str):
