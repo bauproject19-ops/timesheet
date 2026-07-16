@@ -2,7 +2,8 @@ name: Timesheet report - daily matrix
 
 on:
   schedule:
-    - cron: '0 17 * * *'  # 20:00 МСК (UTC+3)
+    # Смещено с круглой минуты — см. комментарий в timesheet-reminder.yml.
+    - cron: '18 17 * * *'  # ~20:18 МСК (UTC+3)
   workflow_dispatch: {}
 
 jobs:
