@@ -24,6 +24,7 @@
     font-size:16px; background:#fff; color:var(--text);
   }
   input:focus, select:focus{outline:2px solid var(--accent); border-color:var(--accent);}
+  select:disabled{background:var(--bg); color:var(--text); opacity:1; -webkit-appearance:none; appearance:none;}
   .row-flex{display:flex; gap:10px; align-items:flex-end;}
   .norm-banner{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:8px 4px;}
   .norm-banner b{font-size:15px;}
@@ -239,7 +240,7 @@ function lockForm(locked){
   });
 }
 
-function setEmployee(id){
+function setEmployee(id, persist){
   const emp = EMPLOYEES.find(e => String(e.id) === String(id));
   if(!emp){
     ASSIGNED_BY_ID = null;
@@ -251,18 +252,33 @@ function setEmployee(id){
   ASSIGNED_BY_ID = emp.id;
   EMPLOYEE_NAME = emp.name;
   subLine.textContent = emp.name;
-  localStorage.setItem('timesheet_employee_id', String(emp.id));
+  if(persist !== false) localStorage.setItem('timesheet_employee_id', String(emp.id));
   lockForm(false);
 }
 
-empSelect.addEventListener('change', () => setEmployee(empSelect.value));
+// Ссылка из напоминания приходит вида .../timesheet.html?uid=951 — она
+// закреплена за конкретным сотрудником. Раньше форма подставляла последнего
+// выбранного в этом браузере человека из localStorage, и если ссылкой на
+// одном устройстве пользовались за разных людей (или уже стоял старый выбор),
+// часы могли уйти не в тот аккаунт. Теперь при валидном ?uid= список
+// заблокирован — переключить сотрудника с этой ссылки нельзя.
+const urlUid = new URLSearchParams(window.location.search).get('uid');
+const lockedEmployee = urlUid && EMPLOYEES.find(e => String(e.id) === String(urlUid));
 
-const savedEmpId = localStorage.getItem('timesheet_employee_id');
-if(savedEmpId && EMPLOYEES.find(e => String(e.id) === savedEmpId)){
-  empSelect.value = savedEmpId;
-  setEmployee(savedEmpId);
+if(lockedEmployee){
+  empSelect.value = String(lockedEmployee.id);
+  empSelect.disabled = true;
+  document.getElementById('empCard').querySelector('label').textContent = 'Сотрудник (закреплено ссылкой)';
+  setEmployee(lockedEmployee.id, false);
 } else {
-  lockForm(true);
+  empSelect.addEventListener('change', () => setEmployee(empSelect.value));
+  const savedEmpId = localStorage.getItem('timesheet_employee_id');
+  if(savedEmpId && EMPLOYEES.find(e => String(e.id) === savedEmpId)){
+    empSelect.value = savedEmpId;
+    setEmployee(savedEmpId);
+  } else {
+    lockForm(true);
+  }
 }
 
 const dateInput = document.getElementById('dateInput');
