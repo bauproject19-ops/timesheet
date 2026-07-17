@@ -193,8 +193,15 @@ function isWeekendOrHoliday(dateStr){
 }
 
 function getEntry(dateStr){
-  if(!dayEntries[dateStr]) dayEntries[dateStr] = { objects: [], sick: null, dayoff: null };
+  if(!dayEntries[dateStr]) dayEntries[dateStr] = { objects: [], sick: null, dayoff: null, submitted: false };
   return dayEntries[dateStr];
+}
+
+// Любое изменение состава/часов на дне сбрасывает флаг "отправлено" — раз
+// данные поменялись, это уже не то, что реально ушло в Битрикс, и кнопку
+// нужно снова сделать активной.
+function markDirty(dateStr){
+  getEntry(dateStr).submitted = false;
 }
 
 // Часы храним внутри как десятичное число (для сумм/нормы/CRM),
@@ -374,11 +381,17 @@ function render(){
   sumVal.textContent = fmtHours(sum);
 
   const enough = sum >= norm;
-  submitBtn.disabled = !enough || sum === 0;
+  if(entry.submitted){
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Отправлено ✓';
+  } else {
+    submitBtn.textContent = 'Отправить';
+    submitBtn.disabled = !enough || sum === 0;
+  }
   if(sum === 0){
     warnMsg.textContent = '';
     warnMsg.classList.remove('show');
-  } else if(!enough){
+  } else if(!enough && !entry.submitted){
     warnMsg.textContent = `Недостаточно часов: введено ${fmtHours(sum)} из ${fmtHours(norm)} нормы.`;
     warnMsg.classList.add('show');
   } else {
@@ -403,6 +416,7 @@ function attachRowHandlers(){
         const idx = parseInt(target, 10);
         entry.objects[idx].hours = Math.max(0, +(((parseFloat(entry.objects[idx].hours)||0) + dir).toFixed(2)));
       }
+      markDirty(dateInput.value);
       render();
     });
   });
@@ -410,6 +424,7 @@ function attachRowHandlers(){
     el.addEventListener('click', e=>{
       const idx = +e.target.dataset.idx;
       getEntry(dateInput.value).objects[idx].place = e.target.dataset.val;
+      markDirty(dateInput.value);
       render();
     });
   });
@@ -417,13 +432,14 @@ function attachRowHandlers(){
     el.addEventListener('click', e=>{
       const idx = +e.target.dataset.idx;
       getEntry(dateInput.value).objects.splice(idx,1);
+      markDirty(dateInput.value);
       render();
     });
   });
   const rmSick = objRows.querySelector('[data-kind=rm-sick]');
-  if(rmSick) rmSick.addEventListener('click', ()=>{ getEntry(dateInput.value).sick = null; render(); });
+  if(rmSick) rmSick.addEventListener('click', ()=>{ getEntry(dateInput.value).sick = null; markDirty(dateInput.value); render(); });
   const rmDayoff = objRows.querySelector('[data-kind=rm-dayoff]');
-  if(rmDayoff) rmDayoff.addEventListener('click', ()=>{ getEntry(dateInput.value).dayoff = null; render(); });
+  if(rmDayoff) rmDayoff.addEventListener('click', ()=>{ getEntry(dateInput.value).dayoff = null; markDirty(dateInput.value); render(); });
   objRows.querySelectorAll('[data-kind=toggle-title]').forEach(el=>{
     el.addEventListener('click', e=>{ e.target.classList.toggle('expanded'); });
   });
@@ -434,11 +450,13 @@ dateInput.addEventListener('change', ()=>{ okMsg.classList.remove('show'); statu
 sickBtn.addEventListener('click', ()=>{
   const entry = getEntry(dateInput.value);
   if(entry.sick === null) entry.sick = 8;
+  markDirty(dateInput.value);
   render();
 });
 dayoffBtn.addEventListener('click', ()=>{
   const entry = getEntry(dateInput.value);
   if(entry.dayoff === null) entry.dayoff = 2;
+  markDirty(dateInput.value);
   render();
 });
 
@@ -514,6 +532,7 @@ function selectObject(obj){
   if(!entry.objects.find(o=>o.dealId===obj.dealId)){
     entry.objects.push({ dealId: obj.dealId, title: obj.title, hours: 0, place: 'Офис' });
   }
+  markDirty(dateInput.value);
   objSearch.style.display = 'none';
   ddResults.style.display = 'none';
   render();
@@ -604,12 +623,15 @@ submitBtn.addEventListener('click', async ()=>{
     }
   }
 
-  submitBtn.textContent = 'Отправить';
-  submitBtn.disabled = false;
   if(errCount === 0 && okCount > 0){
+    // Полностью успешная отправка — помечаем день отправленным и гасим
+    // кнопку, чтобы человек видел: часы за этот день уже улетели в Битрикс,
+    // повторно жать не нужно (пока он сам не поменяет что-то на этот день).
+    entry.submitted = true;
     okMsg.textContent = `Готово — записано ${okCount} запис${okCount===1?'ь':'и'}.`;
     okMsg.classList.add('show');
   }
+  render();
 });
 
 const vacLink = document.getElementById('vacLink');
