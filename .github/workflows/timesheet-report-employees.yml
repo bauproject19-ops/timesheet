@@ -1,9 +1,8 @@
 name: Timesheet report - employees and objects
 
 on:
-  schedule:
-    # Смещено с круглой минуты — см. комментарий в timesheet-reminder.yml.
-    - cron: '35 7 * * *'  # 10:35 МСК (UTC+3)
+  # Расписание теперь не через GitHub cron — см. комментарий в
+  # timesheet-reminder.yml. Запуск дёргает планировщик Cowork (10:35 МСК).
   workflow_dispatch: {}
 
 jobs:
